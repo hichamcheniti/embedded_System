@@ -218,6 +218,9 @@
     <ClCompile Include="..\exo4.c">
       <Filter>Source Files\Microsoft\Windows\Kernel\OS3</Filter>
     </ClCompile>
+    <ClCompile Include="exo5.c">
+      <Filter>Source Files\Microsoft\Windows\Kernel\OS3</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="OS3.rc">

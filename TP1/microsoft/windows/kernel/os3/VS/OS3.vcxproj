@@ -162,6 +162,7 @@
     <ClCompile Include="..\exo3.c" />
     <ClCompile Include="..\exo4.c" />
     <ClCompile Include="..\os_app_hooks.c" />
+    <ClCompile Include="exo5.c" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="OS3.rc" />
