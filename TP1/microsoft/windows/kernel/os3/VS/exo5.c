@@ -64,9 +64,7 @@ OS_TCB controllerTCB;
 *                                           SHARED  VARIABLES
 *********************************************************************************************************
 */
-OS_SEM sem_robot_B_to_robot_A_T1;
-
-OS_SEM sem_robot_B_to_robot_A_T2;
+OS_SEM sem_robot_B_to_robot_A;
 
 OS_MUTEX total_prep_time_mutex;;
 OS_MUTEX controller_done_mutex;
@@ -74,7 +72,7 @@ OS_MUTEX controller_done_mutex;
 OS_Q Q_controller_to_robot_A;
 void* A_prep_time_msg[10];
 
-OS_Q Q_robot_A_to_robot_B;
+OS_Q Q_robot_A_to_robot_B_T1;
 void* B_T1_prep_time_msg[10];
 
 OS_Q Q_robot_A_to_robot_B_T2;
@@ -131,23 +129,22 @@ void main(void)
 
 	App_OS_SetAllHooks();                                       // Set all applications hooks                      
 
-	OSTaskCreate(&robotAT1TCB, "tsk1a", robotA, (void*)0, ROBOT_AT1_PRIO, prepRobotAT1Stk, 10, TASK_STK_SIZE, 5, 100000, (void*)0, OS_OPT_TASK_STK_CHK + OS_OPT_TASK_STK_CLR, &err);
-	OSTaskCreate(&robotAT2TCB, "tsk2a", robotA, (void*)0, ROBOT_AT2_PRIO, prepRobotAT2Stk, 10, TASK_STK_SIZE, 5, 100000, (void*)0, OS_OPT_TASK_STK_CHK + OS_OPT_TASK_STK_CLR, &err);
+	OSTaskCreate(&robotAT1TCB, "tsk1a", robotA, (void*)1, ROBOT_AT1_PRIO, prepRobotAT1Stk, 10, TASK_STK_SIZE / 2, 5, 100000, (void*)0, OS_OPT_TASK_STK_CHK + OS_OPT_TASK_STK_CLR, &err);
+	OSTaskCreate(&robotAT2TCB, "tsk2a", robotA, (void*)2, ROBOT_AT2_PRIO, prepRobotAT2Stk, 10, TASK_STK_SIZE / 2, 5, 100000, (void*)0, OS_OPT_TASK_STK_CHK + OS_OPT_TASK_STK_CLR, &err);
 	
-	OSTaskCreate(&robotBT1TCB, "tsk1b", robotB, (void*)0, ROBOT_BT1_PRIO, prepRobotBT1Stk, 10, TASK_STK_SIZE, 5, 100000, (void*)0, OS_OPT_TASK_STK_CHK + OS_OPT_TASK_STK_CLR, &err);
-	OSTaskCreate(&robotBT2TCB, "tsk2b", robotB, (void*)0, ROBOT_BT2_PRIO, prepRobotBT2Stk, 10, TASK_STK_SIZE, 5, 100000, (void*)0, OS_OPT_TASK_STK_CHK + OS_OPT_TASK_STK_CLR, &err);
+	OSTaskCreate(&robotBT1TCB, "tsk1b", robotB, (void*)1, ROBOT_BT1_PRIO, prepRobotBT1Stk, 10, TASK_STK_SIZE / 2, 5, 100000, (void*)0, OS_OPT_TASK_STK_CHK + OS_OPT_TASK_STK_CLR, &err);
+	OSTaskCreate(&robotBT2TCB, "tsk2b", robotB, (void*)2, ROBOT_BT2_PRIO, prepRobotBT2Stk, 10, TASK_STK_SIZE / 2, 5, 100000, (void*)0, OS_OPT_TASK_STK_CHK + OS_OPT_TASK_STK_CLR, &err);
 	
-	OSTaskCreate(&controllerTCB, "tsk0", controller, (void*)0, CONTROLLER_PRIO, controllerStk, 10, TASK_STK_SIZE, 5, 100000, (void*)0, OS_OPT_TASK_STK_CHK + OS_OPT_TASK_STK_CLR, &err);
+	OSTaskCreate(&controllerTCB, "tsk0", controller, (void*)0, CONTROLLER_PRIO, controllerStk, 10, TASK_STK_SIZE / 2, 5, 100000, (void*)0, OS_OPT_TASK_STK_CHK + OS_OPT_TASK_STK_CLR, &err);
 
-	OSSemCreate(&sem_robot_B_to_robot_A_T1, "SemControlT1", 0, &err);
-	OSSemCreate(&sem_robot_B_to_robot_A_T2, "SemControlT2", 0, &err);
+	OSSemCreate(&sem_robot_B_to_robot_A, "SemControl", 0, &err);
 
 	OSMutexCreate(&total_prep_time_mutex, "MutexPrepTime", &err);
 	OSMutexCreate(&controller_done_mutex, "MutexController", &err);
 
 
 	OSQCreate(&Q_controller_to_robot_A, "controllerA_Queue", 10, &err);
-	OSQCreate(&Q_robot_A_to_robot_B, "ABT1_Queue", 10, &err);
+	OSQCreate(&Q_robot_A_to_robot_B_T1, "ABT1_Queue", 10, &err);
 	OSQCreate(&Q_robot_A_to_robot_B_T2, "ABT2_Queue", 10, &err);
 
 	OSStart(&err);
@@ -162,7 +159,7 @@ void main(void)
 *********************************************************************************************************
 */
 
-void doWorkRobotA(work_data workData, int orderNumber, int startTime)
+void doWorkRobotA(work_data workData, int orderNumber, int startTime, void* data)
 {
 	OS_ERR err;
 	CPU_TS ts;
@@ -179,11 +176,18 @@ void doWorkRobotA(work_data workData, int orderNumber, int startTime)
 
 	OSMutexPost(&total_prep_time_mutex, OS_OPT_POST_NONE, &err);
 	printf("%d: TACHE PREP_ROBOT_A COMMANDE #%d @ %d : Début préparation robot A.\n", OSPrioCur, orderNumber, OSTimeGet(&err) - startTime);
-	OSQPost((OS_Q*)& Q_robot_A_to_robot_B, (void*) & (workData.work_data_b), (OS_MSG_SIZE)sizeof(void*), (OS_OPT)OS_OPT_POST_FIFO, (OS_ERR*)& err);
-
+	if ((int)data == 1) {
+		OSQPost((OS_Q*)& Q_robot_A_to_robot_B_T1, (void*) & (workData.work_data_b), (OS_MSG_SIZE)sizeof(void*), (OS_OPT)OS_OPT_POST_FIFO, (OS_ERR*)& err);
+	}
+	else if ((int)data == 2) {
+		OSQPost((OS_Q*)& Q_robot_A_to_robot_B_T2, (void*) & (workData.work_data_b), (OS_MSG_SIZE)sizeof(void*), (OS_OPT)OS_OPT_POST_FIFO, (OS_ERR*)& err);
+	}
+	else {
+		errMsg(err, "Erreur de transmission du message du robot A vers le robot B. \n");
+	}
 	/* TODO : Faites un delai d'une duree de work_data_a	*/
 	OSTimeDly(workData.work_data_a, OS_OPT_TIME_PERIODIC, &err);
-	OSSemPend(&sem_robot_B_to_robot_A_T1, 0, OS_OPT_PEND_BLOCKING, &ts, &err);
+	OSSemPend(&sem_robot_B_to_robot_A, 0, OS_OPT_PEND_BLOCKING, &ts, &err);
 	errMsg(err, "Error while trying to access sem_robot_B_to_robot_A");
 
 
@@ -205,23 +209,15 @@ void robotA(void* data)
 		//Acquiert mutex protection variable controller_done
 
 		/* TODO : Recuperer la quantite*/
-		printf("%d: data.\n", data);
-
 		workData = OSQPend(&Q_controller_to_robot_A, 0, OS_OPT_PEND_BLOCKING, (OS_MSG_SIZE*)& msg_size, &ts, &err);
 
 
-		doWorkRobotA(*workData, orderNumber, startTime);
+		doWorkRobotA(*workData, orderNumber, startTime,(int)data);
 
 
 		/* TODO : Liberer la memoire*/
 
-		free(workData);
-		OSQFlush(&Q_controller_to_robot_A, &err);
-		OSQFlush(&Q_robot_A_to_robot_B, &err);
 		orderNumber++;
-
-
-
 	}
 }
 
@@ -234,17 +230,25 @@ void robotB(void* data)
 	int startTime = 0;
 	int orderNumber = 1;
 	int* robotBPrepTime;
-	data = data;
 	printf("%d : TACHE PREP_ROBOT_B @ %d : DEBUT. \n", OSPrioCur, OSTimeGet(&err) - startTime);
 
 	while (1)
 	{
 		/* TODO : Recuperer la quantite */
 
-		robotBPrepTime = OSQPend(&Q_robot_A_to_robot_B, 0, OS_OPT_PEND_BLOCKING, (OS_MSG_SIZE*)& msg_size, &ts, &err);
-
+		if ((int)data == 1) {
+			robotBPrepTime = OSQPend(&Q_robot_A_to_robot_B_T1, 0, OS_OPT_PEND_BLOCKING, (OS_MSG_SIZE*)& msg_size, &ts, &err);
+		}
+		else if ((int)data == 2) {
+			robotBPrepTime = OSQPend(&Q_robot_A_to_robot_B_T2, 0, OS_OPT_PEND_BLOCKING, (OS_MSG_SIZE*)& msg_size, &ts, &err);
+		}
+		else {
+			robotBPrepTime = NULL;
+			errMsg(err, "Erreur de reception du message du robot A vers le robot B. \n");
+			exit(1);
+		}
 		/* TODO : On met à jour le temps consacré à la préparation */
-
+	
 
 		printf("%d: TACHE PREP_ROBOT_B COMMANDE #%d @ %d : Début préparation robot B.\n", OSPrioCur, orderNumber, OSTimeGet(&err) - startTime);
 
@@ -252,7 +256,7 @@ void robotB(void* data)
 		OSTimeDly(*robotBPrepTime, OS_OPT_TIME_PERIODIC, &err);
 
 		/* TODO : Gerer la synchronisation*/
-		OSSemPost(&sem_robot_B_to_robot_A_T1, OS_OPT_POST_NONE, &err);
+		OSSemPost(&sem_robot_B_to_robot_A, OS_OPT_POST_NONE, &err);
 	
 
 
@@ -269,7 +273,6 @@ void controller(void* data)
 	int startTime = 0;
 	int randomTime = 0;
 	work_data* workData;
-	data = data;
 	printf("TACHE CONTROLLER @ %d : DEBUT. \n", OSTimeGet(&err) - startTime);
 	while (1)
 	{
@@ -278,11 +281,10 @@ void controller(void* data)
 			/* TODO : Création d'une commande */
 			workData = malloc(sizeof(work_data));
 
-			workData->work_data_a = (rand() % 9 + 5) * 10;
-			workData->work_data_b = (rand() % 9 + 5) * 10;
+			workData->work_data_a = (rand() % 8 + 3) * 10;
+			workData->work_data_b = (rand() % 8 + 3) * 10;
 
-			randomTime = (rand() % 9 + 5) * 10;
-			OSTimeDly(randomTime, OS_OPT_TIME_PERIODIC, &err);
+			
 
 			printf("TACHE CONTROLLER @ %d : COMMANDE #%d. \n prep time A = %d, prep time B = %d\n", OSTimeGet(&err) - startTime, i, workData->work_data_a, workData->work_data_b);
 
@@ -294,6 +296,7 @@ void controller(void* data)
 			OSTimeDly(randomTime, OS_OPT_TIME_PERIODIC, &err);
 
 		}
+		free(workData);
 
 
 		/* TODO : Protection de ce bloc avec un mutex.*/
@@ -303,7 +306,10 @@ void controller(void* data)
 
 		printf("FIN DE L'ENVOI DE COMMANDE @ %d\n", OSTimeGet(&err) - startTime);
 
-
+		OSTaskSuspend(&robotAT1TCB, &err);
+		OSTaskSuspend(&robotBT1TCB, &err);
+		OSTaskSuspend(&robotAT2TCB, &err);
+		OSTaskSuspend(&robotBT2TCB, &err);
 		OSTaskSuspend(&controllerTCB, &err);
 	}
 }
