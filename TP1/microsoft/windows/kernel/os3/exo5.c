@@ -30,8 +30,8 @@
 #define TASK_STK_SIZE       16384            // Size of each task's stacks (# of WORDs)
 
 #define ROBOT_AT1_PRIO        8                // Defining Priority of each task
-#define ROBOT_AT2_PRIO        9
-#define ROBOT_BT1_PRIO        10                // Defining Priority of each task
+#define ROBOT_AT2_PRIO        10
+#define ROBOT_BT1_PRIO        9                // Defining Priority of each task
 #define ROBOT_BT2_PRIO        11
 
 #define CONTROLLER_PRIO     22
@@ -65,9 +65,11 @@ OS_TCB controllerTCB;
 *********************************************************************************************************
 */
 OS_SEM sem_robot_B_to_robot_A;
+//OS_SEM sem_team_A_to_team_B;
 
 OS_MUTEX total_prep_time_mutex;;
 OS_MUTEX controller_done_mutex;
+
 
 OS_Q Q_controller_to_robot_A;
 void* A_prep_time_msg[10];
@@ -131,13 +133,15 @@ void main(void)
 
 	OSTaskCreate(&robotAT1TCB, "tsk1a", robotA, (void*)1, ROBOT_AT1_PRIO, prepRobotAT1Stk, 10, TASK_STK_SIZE / 2, 5, 100000, (void*)0, OS_OPT_TASK_STK_CHK + OS_OPT_TASK_STK_CLR, &err);
 	OSTaskCreate(&robotAT2TCB, "tsk2a", robotA, (void*)2, ROBOT_AT2_PRIO, prepRobotAT2Stk, 10, TASK_STK_SIZE / 2, 5, 100000, (void*)0, OS_OPT_TASK_STK_CHK + OS_OPT_TASK_STK_CLR, &err);
-	
+
 	OSTaskCreate(&robotBT1TCB, "tsk1b", robotB, (void*)1, ROBOT_BT1_PRIO, prepRobotBT1Stk, 10, TASK_STK_SIZE / 2, 5, 100000, (void*)0, OS_OPT_TASK_STK_CHK + OS_OPT_TASK_STK_CLR, &err);
 	OSTaskCreate(&robotBT2TCB, "tsk2b", robotB, (void*)2, ROBOT_BT2_PRIO, prepRobotBT2Stk, 10, TASK_STK_SIZE / 2, 5, 100000, (void*)0, OS_OPT_TASK_STK_CHK + OS_OPT_TASK_STK_CLR, &err);
-	
+
 	OSTaskCreate(&controllerTCB, "tsk0", controller, (void*)0, CONTROLLER_PRIO, controllerStk, 10, TASK_STK_SIZE / 2, 5, 100000, (void*)0, OS_OPT_TASK_STK_CHK + OS_OPT_TASK_STK_CLR, &err);
 
 	OSSemCreate(&sem_robot_B_to_robot_A, "SemControl", 0, &err);
+	//OSSemCreate(&sem_team_A_to_team_B, "SemControl", 0, &err);
+
 
 	OSMutexCreate(&total_prep_time_mutex, "MutexPrepTime", &err);
 	OSMutexCreate(&controller_done_mutex, "MutexController", &err);
@@ -176,10 +180,13 @@ void doWorkRobotA(work_data workData, int orderNumber, int startTime, void* data
 
 	OSMutexPost(&total_prep_time_mutex, OS_OPT_POST_NONE, &err);
 	printf("%d: TACHE PREP_ROBOT_A COMMANDE #%d @ %d : Début préparation robot A.\n", OSPrioCur, orderNumber, OSTimeGet(&err) - startTime);
+
 	if ((int)data == 1) {
+		//OSSemPend(&sem_team_A_to_team_B, 0, OS_OPT_PEND_BLOCKING, &ts, &err);
 		OSQPost((OS_Q*)& Q_robot_A_to_robot_B_T1, (void*) & (workData.work_data_b), (OS_MSG_SIZE)sizeof(void*), (OS_OPT)OS_OPT_POST_FIFO, (OS_ERR*)& err);
 	}
 	else if ((int)data == 2) {
+		//OSSemPost(&sem_team_A_to_team_B, OS_OPT_POST_NONE, &err);
 		OSQPost((OS_Q*)& Q_robot_A_to_robot_B_T2, (void*) & (workData.work_data_b), (OS_MSG_SIZE)sizeof(void*), (OS_OPT)OS_OPT_POST_FIFO, (OS_ERR*)& err);
 	}
 	else {
@@ -209,11 +216,27 @@ void robotA(void* data)
 		//Acquiert mutex protection variable controller_done
 
 		/* TODO : Recuperer la quantite*/
-		workData = OSQPend(&Q_controller_to_robot_A, 0, OS_OPT_PEND_BLOCKING, (OS_MSG_SIZE*)& msg_size, &ts, &err);
+
+		OSMutexPend(&controller_done_mutex, 0, OS_OPT_PEND_BLOCKING, &ts, &err);
+		if (controller_done == 0) {
+			OSMutexPost(&controller_done_mutex, OS_OPT_POST_NONE, &err);
+			workData = OSQPend(&Q_controller_to_robot_A, 0, OS_OPT_PEND_BLOCKING, (OS_MSG_SIZE*)& msg_size, &ts, &err);
+			doWorkRobotA(*workData, orderNumber, startTime, (int)data);
+
+		}
+		else {
+			OSMutexPost(&controller_done_mutex, OS_OPT_POST_NONE, &err);
+			if ((int)data == 1 || (int)data == 2) {
+				printf("AUCUNE COMMENDE RESTANTE POUR L'EQUIPE: %d, TEMRINAISON AU TEMPS %d \n", (int)data, OSTimeGet(&err) - startTime);
+			
+			}
+			else {
+				errMsg(err, "Erreur de supression de tache B (équipe indéfini). \n");
+			}
+			OSTaskDel((OS_TCB*)0, &err);
 
 
-		doWorkRobotA(*workData, orderNumber, startTime,(int)data);
-
+		}
 
 		/* TODO : Liberer la memoire*/
 
@@ -235,7 +258,6 @@ void robotB(void* data)
 	while (1)
 	{
 		/* TODO : Recuperer la quantite */
-
 		if ((int)data == 1) {
 			robotBPrepTime = OSQPend(&Q_robot_A_to_robot_B_T1, 0, OS_OPT_PEND_BLOCKING, (OS_MSG_SIZE*)& msg_size, &ts, &err);
 		}
@@ -248,7 +270,7 @@ void robotB(void* data)
 			exit(1);
 		}
 		/* TODO : On met à jour le temps consacré à la préparation */
-	
+
 
 		printf("%d: TACHE PREP_ROBOT_B COMMANDE #%d @ %d : Début préparation robot B.\n", OSPrioCur, orderNumber, OSTimeGet(&err) - startTime);
 
@@ -257,7 +279,7 @@ void robotB(void* data)
 
 		/* TODO : Gerer la synchronisation*/
 		OSSemPost(&sem_robot_B_to_robot_A, OS_OPT_POST_NONE, &err);
-	
+
 
 
 
@@ -284,12 +306,10 @@ void controller(void* data)
 			workData->work_data_a = (rand() % 8 + 3) * 10;
 			workData->work_data_b = (rand() % 8 + 3) * 10;
 
-			
-
 			printf("TACHE CONTROLLER @ %d : COMMANDE #%d. \n prep time A = %d, prep time B = %d\n", OSTimeGet(&err) - startTime, i, workData->work_data_a, workData->work_data_b);
 
 			/* TODO :  Envoi de la commande aux différentes tâches */
-			OSQPost((OS_Q*)& Q_controller_to_robot_A, (void*)workData, sizeof(workData), (OS_OPT)OS_OPT_POST_FIFO, (OS_ERR*)& err);
+			OSQPost((OS_Q*)& Q_controller_to_robot_A, (void*)workData, sizeof(workData), (OS_OPT)OS_OPT_POST_ALL + OS_OPT_POST_FIFO, (OS_ERR*)& err);
 
 			/* TODO :  Délai aléatoire avant nouvelle commande */
 			randomTime = (rand() % 9 + 5) * 10;
@@ -306,11 +326,8 @@ void controller(void* data)
 
 		printf("FIN DE L'ENVOI DE COMMANDE @ %d\n", OSTimeGet(&err) - startTime);
 
-		OSTaskSuspend(&robotAT1TCB, &err);
-		OSTaskSuspend(&robotBT1TCB, &err);
-		OSTaskSuspend(&robotAT2TCB, &err);
-		OSTaskSuspend(&robotBT2TCB, &err);
-		OSTaskSuspend(&controllerTCB, &err);
+
+		OSTaskDel((OS_TCB*)0, &err);
 	}
 }
 
