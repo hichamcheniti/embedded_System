@@ -303,8 +303,8 @@ void controller(void* data)
 			/* TODO : Création d'une commande */
 			workData = malloc(sizeof(work_data));
 
-			workData->work_data_a = (rand() % 8 + 3) * 10;
-			workData->work_data_b = (rand() % 8 + 3) * 10;
+			workData->work_data_a = (rand() % 6 + 4) * 8;
+			workData->work_data_b = (rand() % 6 + 4) * 8;
 
 			printf("TACHE CONTROLLER @ %d : COMMANDE #%d. \n prep time A = %d, prep time B = %d\n", OSTimeGet(&err) - startTime, i, workData->work_data_a, workData->work_data_b);
 
@@ -312,7 +312,7 @@ void controller(void* data)
 			OSQPost((OS_Q*)& Q_controller_to_robot_A, (void*)workData, sizeof(workData), (OS_OPT)OS_OPT_POST_ALL + OS_OPT_POST_FIFO, (OS_ERR*)& err);
 
 			/* TODO :  Délai aléatoire avant nouvelle commande */
-			randomTime = (rand() % 9 + 5) * 10;
+			randomTime = (rand() % 10 + 10) * 10;
 			OSTimeDly(randomTime, OS_OPT_TIME_PERIODIC, &err);
 
 		}
