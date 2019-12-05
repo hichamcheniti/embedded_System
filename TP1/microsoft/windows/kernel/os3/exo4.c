@@ -198,8 +198,7 @@
 //		/* TODO : Liberer la memoire*/
 //	
 //		free(workData);
-//		OSQFlush(&Q_controller_to_robot_A, &err);
-//		OSQFlush(&Q_robot_A_to_robot_B, &err);
+//
 //		orderNumber++;
 //
 //
